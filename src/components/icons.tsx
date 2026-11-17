@@ -12,6 +12,7 @@ import mail from "@iconify-icons/lucide/mail";
 import menu from "@iconify-icons/lucide/menu";
 import moon from "@iconify-icons/lucide/moon";
 import panelLeft from "@iconify-icons/lucide/panel-left";
+import pencil from "@iconify-icons/lucide/pencil";
 import phone from "@iconify-icons/lucide/phone";
 import plus from "@iconify-icons/lucide/plus";
 import reply from "@iconify-icons/lucide/reply";
@@ -49,6 +50,7 @@ export type IconName =
   | "panel"
   | "mail"
   | "phone"
+  | "pencil"
   | "calendar"
   | "settings"
   | "reply";
@@ -76,6 +78,7 @@ const icons = {
   panel: panelLeft,
   mail,
   phone,
+  pencil,
   calendar,
   settings,
   reply,

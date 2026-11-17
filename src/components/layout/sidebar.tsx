@@ -221,7 +221,7 @@ export function Sidebar() {
           ref={navRef}
           aria-label="Main"
           className={cn(
-            "relative flex min-h-0 w-full flex-1 flex-col gap-1.5 overflow-x-hidden overflow-y-auto",
+            "relative flex min-h-0 w-full flex-1 flex-col gap-1.5 overflow-x-hidden overflow-y-auto pt-4",
             "md:items-center",
             !rail && "xl:items-stretch xl:gap-2",
           )}

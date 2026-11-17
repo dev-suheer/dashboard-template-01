@@ -86,7 +86,7 @@ export function SplitTitle({ children }: { children: string }) {
   return (
     <h1
       aria-label={children}
-      className="text-[32px] font-semibold leading-[1.04] tracking-[-0.025em] text-ink sm:text-[38px]"
+      className="text-[32px] font-semibold leading-[1.04] tracking-[-0.025em] text-ink sm:text-[38px] pb-2"
     >
       {words.map((word) => {
         const letters = [...word];

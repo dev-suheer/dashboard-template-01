@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/icons";
+import { Icon, type IconName } from "@/components/icons";
 import { SelectField, TextField } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { FilterChip } from "@/components/ui/search-field";
-import { Avatar, Card, CardHeader, KpiTile, Meter, PageHeader, StatusPill } from "@/components/ui/surface";
+import { Avatar, Card, CardHeader, PageHeader, StatusPill } from "@/components/ui/surface";
 import { people } from "@/data/people";
 import { departments, session } from "@/data/world";
 import { useAuth } from "@/features/auth/auth-context";
@@ -13,80 +13,130 @@ import { useToast } from "@/lib/toast";
 import { useCountUp } from "@/lib/use-count-up";
 import { cn } from "@/lib/cn";
 
-const DAY_MINUTES = 16 * 60;
 const leaveTypes = ["Annual leave", "Sick", "Parental", "Time off in lieu", "Unpaid", "Compassionate"] as const;
 
-type SailState = "Sailed" | "At sea" | "Due" | "Short";
+const dutyTrend = [94, 95, 93, 96, 94, 97, 96, 98, 97, 96, 95, 97];
+const dutyMonths = ["Dec", "Feb", "Apr", "Jun", "Aug", "Nov"];
 
-type Sailing = {
-  t: string;
-  from: string;
-  to: string;
-  state: SailState;
-  mins: number;
-  have: number;
-  need: number;
-  ship: string;
-};
-
-const corran: Sailing[] = [
-  { t: "06:40", from: "Skerrow", to: "Inchmor", state: "Sailed", mins: 50, have: 11, need: 11, ship: "MV Corran" },
-  { t: "08:20", from: "Inchmor", to: "Skerrow", state: "Sailed", mins: 50, have: 11, need: 11, ship: "MV Corran" },
-  { t: "10:20", from: "Skerrow", to: "Inchmor", state: "At sea", mins: 50, have: 11, need: 11, ship: "MV Corran" },
-  { t: "12:10", from: "Inchmor", to: "Skerrow", state: "Due", mins: 50, have: 11, need: 11, ship: "MV Corran" },
-  { t: "14:10", from: "Skerrow", to: "Inchmor", state: "Due", mins: 50, have: 11, need: 11, ship: "MV Corran" },
-  { t: "16:00", from: "Inchmor", to: "Skerrow", state: "Due", mins: 50, have: 11, need: 11, ship: "MV Corran" },
-  { t: "17:50", from: "Skerrow", to: "Inchmor", state: "Due", mins: 50, have: 11, need: 11, ship: "MV Corran" },
-  { t: "19:40", from: "Inchmor", to: "Skerrow", state: "Due", mins: 50, have: 11, need: 11, ship: "MV Corran" },
-];
-
-const brae: Sailing[] = [
-  { t: "07:15", from: "Skerrow", to: "Rennay", state: "Sailed", mins: 50, have: 5, need: 5, ship: "MV Brae Lass" },
-  { t: "09:00", from: "Rennay", to: "Skerrow", state: "Sailed", mins: 50, have: 5, need: 5, ship: "MV Brae Lass" },
-  { t: "11:30", from: "Skerrow", to: "Rennay", state: "Due", mins: 50, have: 5, need: 5, ship: "MV Brae Lass" },
-  { t: "13:30", from: "Rennay", to: "Skerrow", state: "Due", mins: 50, have: 5, need: 5, ship: "MV Brae Lass" },
-  { t: "15:45", from: "Skerrow", to: "Rennay", state: "Short", mins: 50, have: 4, need: 5, ship: "MV Brae Lass" },
-  { t: "18:00", from: "Rennay", to: "Skerrow", state: "Short", mins: 50, have: 4, need: 5, ship: "MV Brae Lass" },
-];
-
-const heat = [
-  ["Deck", 1, [0.55, 0.9, 0.72, 0.4, 0.7, 0.86, 0.78]],
-  ["Engine", 2, [0.48, 0.7, 0.66, 0.34, 0.8, 0.5, 0.62]],
-  ["Galley", 3, [0.6, 0.42, 0.4, 0.55, 0.74, 0.22, 0.58]],
-  ["Service", 4, [0.7, 0.88, 0.6, 0.76, 0.74, 0.8, 0.46]],
-  ["Terminal", 5, [0.5, 0.72, 0.8, 0.5, 0.78, 0.7, 0.76]],
-  ["Office", 6, [0.82, 0.9, 0.88, 0.8, 0.8, 0.2, 0.12]],
+const crewMix = [
+  ["Deck", 26],
+  ["Engine", 16],
+  ["Galley", 12],
+  ["Service", 20],
+  ["Terminal", 22],
+  ["Office", 16],
 ] as const;
 
-const asks: [string, 1 | 2 | 3 | 4 | 5 | 6, string, string, string][] = [
-  ["Molly Kaur", 6, "Time off", "Sick · 2–3 Nov", "Fit note to follow"],
-  ["Idris Chen", 4, "Time off", "Time off in lieu · 6 Nov", "Owed from the double crossing"],
-  ["Aisha Hughes", 2, "Time off", "Annual leave · 20–26 Nov", "Her sister’s wedding in Galway"],
-  ["Kenji Arai", 2, "Swap", "Friday night watch", "Ruby Reid can take it"],
+type Tone = 1 | 2 | 3 | 4 | 5 | 6;
+
+const sources: { name: string; hours: number; share: number; icon: IconName; tone: Tone }[] = [
+  { name: "Deck", hours: 1014, share: 23, icon: "ship", tone: 1 },
+  { name: "Engine room", hours: 617, share: 14, icon: "settings", tone: 2 },
+  { name: "Galley", hours: 485, share: 11, icon: "clock", tone: 3 },
+  { name: "Onboard service", hours: 794, share: 18, icon: "crew", tone: 4 },
+  { name: "Terminal", hours: 882, share: 20, icon: "calendar", tone: 5 },
+  { name: "Shore office", hours: 618, share: 14, icon: "mail", tone: 6 },
 ];
 
-const commended = [
-  ["Femi Popescu", "Ordinary seaman · Corran", 1, 4.4],
-  ["Olumide Bakare", "Chief cook · Corran", 3, 4.3],
-  ["Idris Chen", "Café steward · Corran", 4, 4.3],
-  ["Molly Kowalski", "Cook · Corran", 3, 4.3],
-] as const;
+type MetricId = "duty" | "sailings" | "short" | "leave";
 
-const upcoming = [
-  ["Rosa Bennett", "Birthday · Terminal", "Today"],
-  ["Freya Achterberg", "Birthday · Deck · Corran", "Tomorrow"],
-  ["Isla Popescu", "6 years with us · Café steward", "Tomorrow"],
-  ["Rahul Fischer", "Birthday · Engine room", "Thu 5"],
+const metrics: {
+  id: MetricId;
+  label: string;
+  value: number;
+  delta: string;
+  down?: boolean;
+  foot: string;
+  icon: IconName;
+  spark: number[];
+  series: number[];
+  title: string;
+}[] = [
+  {
+    id: "duty",
+    label: "On duty",
+    value: 62,
+    delta: "4%",
+    foot: "aboard now",
+    icon: "crew",
+    spark: [54, 58, 51, 60, 62, 57, 63, 61, 64, 59, 62],
+    series: [58, 60, 54, 48, 61, 63, 62, 59, 61, 64, 55, 49, 62, 62],
+    title: "On duty · last 14 days",
+  },
+  {
+    id: "sailings",
+    label: "Sailings",
+    value: 14,
+    delta: "8%",
+    foot: "across two ships",
+    icon: "ship",
+    spark: [10, 12, 11, 14, 13, 9, 14, 12, 14, 11, 14],
+    series: [12, 14, 13, 10, 14, 14, 14, 13, 14, 14, 11, 8, 14, 14],
+    title: "Sailings · last 14 days",
+  },
+  {
+    id: "short",
+    label: "Short-crewed",
+    value: 2,
+    delta: "33%",
+    down: true,
+    foot: "next at 15:45",
+    icon: "clock",
+    spark: [3, 2, 4, 1, 2, 3, 1, 2, 0, 3, 2],
+    series: [1, 0, 2, 3, 1, 0, 1, 2, 1, 0, 2, 1, 3, 2],
+    title: "Short sailings · last 14 days",
+  },
+  {
+    id: "leave",
+    label: "Time off",
+    value: 6,
+    delta: "2",
+    foot: "waiting on you",
+    icon: "calendar",
+    spark: [3, 4, 2, 5, 6, 4, 7, 5, 6, 3, 6],
+    series: [4, 5, 3, 2, 6, 7, 5, 4, 6, 8, 3, 2, 5, 6],
+    title: "Time-off requests · last 14 days",
+  },
 ];
 
-function minutes(time: string) {
-  const [h, m] = time.split(":").map(Number);
-  return h! * 60 + m!;
-}
+const dayLabels = ["21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "1", "2", "3"];
 
-function place(time: string) {
-  return ((minutes(time) - 6 * 60) / DAY_MINUTES) * 100;
-}
+const requests: {
+  name: string;
+  tone: Tone;
+  kind: string;
+  when: string;
+  note: string;
+  pill: "good" | "info" | "warn";
+}[] = [
+  { name: "Molly Kaur", tone: 6, kind: "Leave", when: "Sick · 2–3 Nov", note: "Fit note to follow", pill: "good" },
+  { name: "Idris Chen", tone: 4, kind: "Leave", when: "Time off in lieu · 6 Nov", note: "Owed from the double crossing", pill: "good" },
+  { name: "Aisha Hughes", tone: 2, kind: "Leave", when: "Annual leave · 20–26 Nov", note: "Her sister’s wedding in Galway", pill: "good" },
+  { name: "Kenji Arai", tone: 2, kind: "Swap", when: "Friday night watch", note: "Ruby Reid can take it", pill: "info" },
+  { name: "Nia Fraser", tone: 1, kind: "Overtime", when: "Saturday double", note: "Two extra hours on the late sailing", pill: "warn" },
+];
+
+const commended: { name: string; role: string; tone: Tone; score: number }[] = [
+  { name: "Femi Popescu", role: "Ordinary seaman · Corran", tone: 1, score: 4.4 },
+  { name: "Olumide Bakare", role: "Chief cook · Corran", tone: 3, score: 4.3 },
+  { name: "Idris Chen", role: "Café steward · Corran", tone: 4, score: 4.3 },
+  { name: "Molly Kowalski", role: "Cook · Corran", tone: 3, score: 4.2 },
+  { name: "Rosa Bennett", role: "Ticket agent · Terminal", tone: 5, score: 4.1 },
+];
+
+const upcoming: {
+  name: string;
+  tone: Tone;
+  detail: string;
+  when: string;
+  pill: "good" | "info" | "neutral" | "warn";
+}[] = [
+  { name: "Rosa Bennett", tone: 5, detail: "Birthday · Terminal", when: "Today", pill: "good" },
+  { name: "Freya Achterberg", tone: 1, detail: "Birthday · Deck · Corran", when: "Tomorrow", pill: "info" },
+  { name: "Isla Popescu", tone: 4, detail: "6 years with us · Café steward", when: "Tomorrow", pill: "info" },
+  { name: "Rahul Fischer", tone: 2, detail: "Birthday · Engine room", when: "Thu 5", pill: "neutral" },
+  { name: "Dev Sharma", tone: 6, detail: "First solo watch · Shore office", when: "Fri 6", pill: "warn" },
+];
 
 function workingDays(from: string, to: string) {
   const start = new Date(`${from}T00:00:00`);
@@ -105,20 +155,115 @@ function Figure({ value }: { value: number }) {
   return <>{Math.round(current)}</>;
 }
 
+function points(values: number[], width: number, height: number, pad = 2) {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  return values.map((value, index) => {
+    const x = (index / (values.length - 1)) * width;
+    const y = height - pad - ((value - min) / span) * (height - pad * 2);
+    return [x, y] as const;
+  });
+}
+
+function Sparkline({ values }: { values: number[] }) {
+  const line = points(values, 78, 32)
+    .map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`)
+    .join(" ");
+  return (
+    <svg viewBox="0 0 78 32" className="h-8 w-[78px]" aria-hidden>
+      <path d={line} fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TrendChart({ values }: { values: number[] }) {
+  const width = 640;
+  const height = 112;
+  const plotted = points(values, width, height, 8);
+  const line = plotted.map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const area = `${line} L${width},${height} L0,${height} Z`;
+  const ticks = [100, 96, 92];
+  return (
+    <div className="mt-5 grid grid-cols-[32px_minmax(0,1fr)] gap-2">
+      <div className="flex h-28 flex-col justify-between text-2xs font-semibold text-muted">
+        {ticks.map((tick) => (
+          <span key={tick}>{tick}</span>
+        ))}
+      </div>
+      <div>
+        <svg viewBox={`0 0 ${width} ${height}`} className="h-28 w-full" role="img" aria-label="Duty score from December to November">
+          {[0.2, 0.5, 0.8].map((row) => (
+            <line key={row} x1="0" x2={width} y1={height * row} y2={height * row} stroke="var(--line-2)" />
+          ))}
+          <path d={area} fill="var(--accent)" opacity="0.16" />
+          <path d={line} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        </svg>
+        <div className="mt-1 flex justify-between text-2xs font-semibold text-muted">
+          {dutyMonths.map((month) => (
+            <span key={month}>{month}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BarChart({ values }: { values: number[] }) {
+  const peak = Math.max(...values, 1);
+  const top = Math.max(2, Math.ceil(peak / 2) * 2);
+  const ticks = [top, top / 2, 0];
+
+  return (
+    <div className="grid h-full min-h-48 flex-1 grid-cols-[2rem_minmax(0,1fr)] grid-rows-[minmax(9rem,1fr)_auto] gap-x-3">
+      <div className="relative row-start-1 text-right text-2xs font-semibold text-muted">
+        {ticks.map((tick, index) => (
+          <span
+            key={tick}
+            className="absolute right-0 leading-none"
+            style={{
+              top: `${(index / (ticks.length - 1)) * 100}%`,
+              transform: index === 0 ? undefined : index === ticks.length - 1 ? "translateY(-100%)" : "translateY(-50%)",
+            }}
+          >
+            {tick}
+          </span>
+        ))}
+      </div>
+      <div className="row-start-1 flex min-h-0 items-end gap-1.5 border-b border-line">
+        {values.map((value, index) => (
+          <div key={dayLabels[index]} className="flex h-full min-w-0 flex-1 items-end">
+            <div
+              className={cn("w-full rounded-t-[4px]", index === values.length - 1 ? "bg-accent" : "bg-ink/20")}
+              style={{ height: `${(value / top) * 100}%` }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="col-start-2 row-start-2 mt-2 flex gap-1.5">
+        {dayLabels.map((label, index) => (
+          <span key={`${label}-${index}`} className="min-w-0 flex-1 text-center text-2xs font-semibold text-muted">
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function OverviewPage() {
   const { user } = useAuth();
   const { push } = useToast();
   const [bookOpen, setBookOpen] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
-  const [sailing, setSailing] = useState<Sailing | null>(null);
-  const [onBreak, setOnBreak] = useState(false);
-  const [signedOff, setSignedOff] = useState(false);
+  const [metricId, setMetricId] = useState<MetricId>("duty");
+  const metric = metrics.find((item) => item.id === metricId) ?? metrics[0]!;
 
   return (
     <>
       <PageHeader
         title={`Good morning, ${user?.name.split(" ")[0] ?? "User"}`}
-        subtitle="62 of 64 crew due so far are on duty and 2 didn’t show. 2 sailings are short of minimum crew — the next at 15:45. 6 time-off requests are waiting."
+        subtitle="6 requests are waiting for a decision and 2 sailings are short of crew. Duty is up for the fourth week running."
         actions={
           <>
             <Button icon={<Icon name="calendar" className="size-4" />} onClick={() => setBookOpen(true)}>
@@ -131,296 +276,218 @@ export function OverviewPage() {
         }
       />
 
-      <div className="grid min-w-0 grid-cols-1 items-start gap-3 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <Card className="p-4 md:p-5" delay={40}>
-          <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="grid items-stretch gap-3 xl:grid-cols-6">
+        <section className="card flex h-full flex-col p-4 md:p-5 xl:col-span-4" aria-label="Duty score">
+          <div className="flex flex-wrap items-start justify-between gap-5">
             <div>
-              <h2 className="text-lg font-semibold">Today on the water</h2>
-              <p className="text-sm text-muted">14 sailings across two ships · 10 still to go</p>
+              <p className="text-xs font-semibold text-muted">Duty score · November</p>
+              <p className="mt-2 text-[52px] leading-none font-semibold tracking-tight text-ink tabular-nums">
+                <Figure value={97} />
+                <span className="ml-1 text-lg font-semibold text-muted">%</span>
+              </p>
+              <p className="mt-2 text-sm">
+                <span className="font-semibold text-good">↑ 2.1%</span>
+                <span className="text-muted"> vs October</span>
+              </p>
             </div>
-            <div className="flex flex-wrap gap-3 text-xs font-semibold text-muted">
-              <Legend swatch="bg-out" label="Sailed" />
-              <Legend swatch="bg-accent" label="At sea" />
-              <Legend swatch="bg-info" label="Boarding" />
-              <Legend swatch="bg-bad" label="Short-crewed" />
-            </div>
+            <dl className="grid grid-cols-3 gap-4 sm:gap-6">
+              {[
+                ["On duty", "62", "aboard now"],
+                ["Sailings", "14", "two ships"],
+                ["Short", "2", "next 15:45"],
+              ].map(([label, value, foot]) => (
+                <div key={label}>
+                  <dt className="text-xs font-semibold text-muted">{label}</dt>
+                  <dd className="mt-1 text-2xl font-semibold tracking-tight text-ink tabular-nums">{value}</dd>
+                  <dd className="text-xs text-muted">{foot}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
-          <div className="mt-5 w-full max-w-full overflow-x-auto">
-            <div className="relative min-w-[760px] pt-6 lg:min-w-0">
-              <div className="absolute top-0 right-0 left-[168px] h-4">
-                {["06:00", "08:00", "10:00", "12:00", "14:00", "16:00", "18:00", "20:00", "22:00"].map((tick, index) => (
+          <TrendChart values={dutyTrend} />
+        </section>
+
+        <Card className="flex h-full flex-col p-4 md:p-5 xl:col-span-2" delay={60}>
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="text-lg font-semibold">The crew</h2>
+            <p className="text-sm text-muted">112 people</p>
+          </div>
+          <ul className="mt-4 grid flex-1 content-center gap-2.5">
+            {crewMix.map(([name, count]) => (
+              <li key={name} className="grid grid-cols-[72px_minmax(0,1fr)_36px] items-center gap-2">
+                <span className="text-sm font-semibold">{name}</span>
+                <span className="block h-1.5 overflow-hidden rounded-full bg-side-well">
                   <span
-                    key={tick}
-                    className="absolute text-2xs font-semibold text-muted"
-                    style={{
-                      left: `${(index / 8) * 100}%`,
-                      transform: index === 0 ? undefined : index === 8 ? "translateX(-100%)" : "translateX(-50%)",
-                    }}
-                  >
-                    {tick}
-                  </span>
-                ))}
-              </div>
-              <Lane name="MV Corran" run="Skerrow ⇄ Inchmor" tone={1} sailings={corran} onOpen={setSailing} />
-              <Lane name="MV Brae Lass" run="Skerrow ⇄ Rennay" tone={3} sailings={brae} onOpen={setSailing} />
-              <span
-                className="pointer-events-none absolute bottom-0 z-10 w-0.5 bg-now"
-                style={{ top: 24, left: `calc(168px + (100% - 168px) * ${place("10:40") / 100})` }}
-              >
-                <b
-                  className="absolute left-1/2 -translate-x-1/2 rounded-full bg-now px-1.5 py-px text-[10px] leading-4 font-bold whitespace-nowrap text-white"
-                  style={{ top: -22 }}
-                >
-                  10:40
-                </b>
-              </span>
-            </div>
-          </div>
-          <div className="mt-3.5 grid gap-2.5 md:grid-cols-3">
-            {[
-              ["10:20", "under way", "Skerrow → Inchmor", "MV Corran", "11/11"],
-              ["11:30", "in 50m", "Skerrow → Rennay", "MV Brae Lass", "5/5"],
-              ["12:10", "in 1h 30m", "Inchmor → Skerrow", "MV Corran", "11/11"],
-            ].map(([time, when, run, ship, crew]) => (
-              <button
-                key={time}
-                type="button"
-                onClick={() => setSailing([...corran, ...brae].find((item) => item.t === time && item.ship === ship) ?? null)}
-                className="flex cursor-pointer items-center gap-3 rounded-[14px] bg-card px-3 py-2.5 text-left shadow-[inset_0_0_0_1px_var(--line)] hover:bg-panel"
-              >
-                <span className="flex shrink-0 flex-col border-r border-line pr-3">
-                  <b className="text-lg leading-tight font-semibold tracking-tight">{time}</b>
-                  <small className="text-xs font-semibold text-muted">{when}</small>
+                    className="block h-full rounded-full bg-ink"
+                    style={{ width: `${Math.round((count / 112) * 100)}%` }}
+                  />
                 </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold">{run}</span>
-                  <span className="block truncate text-xs text-muted">{ship}</span>
+                <span className="text-right text-xs font-semibold tabular-nums text-muted">
+                  {Math.round((count / 112) * 100)}%
                 </span>
-                <span className="inline-flex h-6 shrink-0 items-center rounded-full bg-good-soft px-2 text-xs font-bold text-good">
-                  {crew}
-                </span>
-              </button>
+              </li>
             ))}
-          </div>
+          </ul>
+          <p className="mt-4 flex items-center gap-2 rounded-md bg-side-well px-3 py-2 text-sm text-ink-2">
+            <span className="size-1.5 shrink-0 rounded-full bg-good" />
+            97% of those due are aboard.
+          </p>
         </Card>
+      </div>
 
-        <Card className="p-4 md:p-5" delay={80}>
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">My watch</h2>
-              <p className="text-sm text-muted">Shore office · 08:00–16:30</p>
-            </div>
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-in-text">
-              <span className="relative grid size-2 place-items-center">
-                <span className="size-2 rounded-full bg-good" />
-                <span className="absolute size-3.5 rounded-full bg-good" style={{ animation: "breathe 2s ease-in-out infinite" }} />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Pick what the chart shows">
+        {metrics.map((item) => {
+          const active = item.id === metricId;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setMetricId(item.id)}
+              className={cn(
+                "flex cursor-pointer items-center gap-3 rounded-lg p-4 text-left shadow-card",
+                active ? "bg-accent-soft ring-2 ring-accent" : "bg-card",
+              )}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  <Icon name={item.icon} className="size-4 text-muted" />
+                  {item.label}
+                </span>
+                <span className="mt-2 block text-[32px] leading-none font-semibold tracking-tight text-ink tabular-nums">
+                  <Figure value={item.value} />
+                </span>
+                <span className="mt-2 block text-xs">
+                  <span className={cn("font-semibold", item.down ? "text-bad" : "text-good")}>
+                    {item.down ? "↓" : "↑"} {item.delta}
+                  </span>
+                  <span className="text-muted"> {item.foot}</span>
+                </span>
               </span>
-              Running
-            </span>
-          </div>
-          <div className="mx-auto mt-4 grid size-40 place-items-center rounded-full" style={{ background: "conic-gradient(var(--accent) 0 110deg, var(--line-2) 110deg 360deg)" }}>
-            <div className="grid size-[118px] place-items-center rounded-full bg-card text-center">
-              <div>
-                <p className="text-2xl font-semibold tabular-nums tracking-tight">02:35:54</p>
-                <p className="text-2xs text-muted">of 8.5h today</p>
-              </div>
-            </div>
-          </div>
-          <div className="mt-4 flex gap-2">
-            <Button
-              className="flex-1"
-              size="sm"
-              onClick={() => {
-                setOnBreak((current) => !current);
-                push(onBreak ? "Came back from a break" : "Went on a break");
-              }}
-            >
-              {onBreak ? "Back on watch" : "Take a break"}
-            </Button>
-            <Button
-              className="flex-1"
-              size="sm"
-              variant={signedOff ? "primary" : "ink"}
-              onClick={() => {
-                setSignedOff((current) => !current);
-                push(signedOff ? "Signed back on" : "Signed off after 2.6h");
-              }}
-            >
-              {signedOff ? "Sign back on" : "Sign off"}
-            </Button>
-          </div>
-          <p className="mt-4 text-xs text-muted">Average day <b className="text-ink">6.9h</b></p>
-        </Card>
+              <Sparkline values={item.spark} />
+            </button>
+          );
+        })}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Link to="/attendance/timesheets" className="block"><KpiTile tone={1} label="On duty now" value={<><Figure value={62} /> / 83</>} foot="97% of those due are aboard" /></Link>
-        <Link to="/attendance/timesheets"><KpiTile tone={2} delay={60} label="Crewed to minimum" value={<><Figure value={8} /> / 10 to go</>} foot="2 short · next 15:45" /></Link>
-        <KpiTile tone={3} delay={120} label="Off today" value={<Figure value={7} />} foot="2 sick · 5 planned" />
-        <KpiTile tone={4} delay={180} label="Open berths" value={<Figure value={8} />} foot="across 5 roles" />
-      </div>
-
-      <div className="grid gap-3 xl:grid-cols-3">
-        <Card className="xl:col-span-1" delay={80}>
-          <CardHeader title="Crew hours this week" subtitle="4,410 hours rostered · by department and day" />
-          <div className="px-4 pb-4 md:px-5">
-            <div className="mb-2 grid grid-cols-[minmax(0,72px)_repeat(7,minmax(0,1fr))] gap-1 text-center text-2xs font-semibold text-muted">
-              <span />
-              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
-                <span key={day} className={day === "Tue" ? "text-ink" : undefined}>{day}</span>
-              ))}
-            </div>
-            <div className="grid gap-1.5">
-              {heat.map(([name, tone, cells]) => (
-                <div key={name} className="grid grid-cols-[minmax(0,72px)_repeat(7,minmax(0,1fr))] items-center gap-1">
-                  <span className="truncate text-xs font-semibold" style={{ color: `var(--c${tone})` }}>{name}</span>
-                  {cells.map((cell, index) => (
-                    <span
-                      key={index}
-                      className="h-6 rounded-[6px]"
-                      style={{ background: `color-mix(in srgb, var(--c${tone}) ${Math.round(18 + cell * 72)}%, transparent)` }}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
+      <div className="grid items-stretch gap-3 xl:grid-cols-6">
+        <Card className="flex h-full flex-col xl:col-span-4" delay={40}>
+          <CardHeader title={metric.title} subtitle="21 Oct – today · pick a tile above to switch" />
+          <div className="flex min-h-0 flex-1 flex-col px-4 pt-1 pb-4 md:px-5 md:pb-5">
+            <BarChart values={metric.series} />
           </div>
         </Card>
 
-        <Card delay={120}>
-          <CardHeader title="Waiting on you" subtitle="10 decisions · oldest Sat, 6:02" action={<Link to="/payroll/run" className="text-sm font-semibold text-accent-text">All</Link>} />
-          <ul className="grid gap-3 px-4 pb-4 md:px-5">
-            {asks.map(([name, tone, type, when, note]) => (
-              <li key={name} className="flex items-start gap-3">
-                <Avatar name={name} tone={tone} size="sm" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold">{name}</p>
-                  <p className="text-xs text-muted">{type} · {when}</p>
-                  <p className="text-xs text-ink-2">“{note}”</p>
-                </div>
-                <StatusPill tone="warn">{type === "Swap" ? "Swap" : "Leave"}</StatusPill>
+        <Card className="flex h-full flex-col xl:col-span-2" delay={80}>
+          <CardHeader
+            title="Waiting on you"
+            subtitle="Oldest first, so nothing sits past a day"
+            action={
+              <Link to="/payroll/run" className="text-sm font-semibold text-accent-text">
+                All 6
+              </Link>
+            }
+          />
+          <ul>
+            {requests.map((request) => (
+              <li key={request.name} className="border-t border-line first:border-t-0">
+                <button
+                  type="button"
+                  onClick={() => push(`Opened ${request.name.split(" ")[0]}’s ${request.kind.toLowerCase()} request`)}
+                  className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left hover:bg-side-hover md:px-5"
+                >
+                  <Avatar name={request.name} tone={request.tone} size="sm" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">{request.note}</span>
+                    <span className="block truncate text-xs text-muted">
+                      {request.name} · {request.when}
+                    </span>
+                  </span>
+                  <StatusPill tone={request.pill}>{request.kind}</StatusPill>
+                </button>
               </li>
             ))}
           </ul>
         </Card>
 
-        <Card delay={160}>
-          <CardHeader title="Most commended" subtitle="Reviews and shout-outs, this month" action={<Link to="/performance/goals" className="text-sm font-semibold text-accent-text">All</Link>} />
-          <ol className="grid gap-3 px-4 pb-4 md:px-5">
-            {commended.map(([name, role, tone, score], index) => (
-              <li key={name} className="flex items-center gap-3">
+        <Card className="flex h-full flex-col xl:col-span-2" delay={80}>
+          <CardHeader title="Where the hours are" subtitle="4,410 hours rostered this week, by department" />
+          <div className="flex flex-1 flex-col px-4 pb-4 md:px-5 md:pb-5">
+            <div className="flex h-2 overflow-hidden rounded-full">
+              {sources.map((source) => (
+                <span key={source.name} style={{ width: `${source.share}%`, background: `var(--c${source.tone})` }} />
+              ))}
+            </div>
+            <ul className="mt-3 grid">
+              {sources.map((source) => (
+                <li key={source.name} className="flex items-center gap-3 border-t border-line py-2.5 first:border-t-0">
+                  <span
+                    className="grid size-8 place-items-center rounded-full"
+                    style={{ background: `var(--h${source.tone})`, color: `var(--c${source.tone})` }}
+                  >
+                    <Icon name={source.icon} className="size-4" />
+                  </span>
+                  <span className="min-w-0 flex-1 text-sm font-semibold">{source.name}</span>
+                  <span className="text-sm font-semibold tabular-nums">{source.hours.toLocaleString("en-GB")}</span>
+                  <span className="w-10 text-right text-xs font-semibold text-muted">{source.share}%</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Card>
+
+        <Card className="flex h-full flex-col xl:col-span-2" delay={120}>
+          <CardHeader
+            title="Most commended"
+            subtitle="Three shout-outs or more, this month"
+            action={
+              <Link to="/crew" className="text-sm font-semibold text-accent-text">
+                Directory
+              </Link>
+            }
+          />
+          <ol>
+            {commended.map((person, index) => (
+              <li key={person.name} className="flex items-center gap-3 border-t border-line px-4 py-2.5 first:border-t-0 md:px-5">
                 <span className="w-4 text-xs font-bold text-muted">{index + 1}</span>
-                <Avatar name={name} tone={tone} size="sm" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{name}</p>
-                  <p className="truncate text-xs text-muted">{role}</p>
-                </div>
-                <span className="text-sm font-semibold tabular-nums">{score.toFixed(1)}</span>
+                <Avatar name={person.name} tone={person.tone} size="sm" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{person.name}</span>
+                  <span className="block truncate text-xs text-muted">{person.role}</span>
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-ink px-2 py-1 text-xs font-bold text-card tabular-nums">
+                  <Icon name="target" className="size-3" />
+                  {person.score.toFixed(2)}
+                </span>
               </li>
             ))}
           </ol>
-          <div className="px-4 pb-5 md:px-5">
-            <p className="mb-2 text-xs font-semibold text-muted">November overtime · 363h</p>
-            <Meter value={0.72} label="Overtime against the summer peak" />
-          </div>
+        </Card>
+
+        <Card className="flex h-full flex-col xl:col-span-2" delay={160}>
+          <CardHeader title="Coming up" subtitle="The next ten days on the desk" />
+          <ul className="flex-1">
+            {upcoming.map((item) => (
+              <li key={item.name} className="flex items-center gap-3 border-t border-line px-4 py-2.5 first:border-t-0 md:px-5">
+                <Avatar name={item.name} tone={item.tone} size="sm" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{item.name}</span>
+                  <span className="block truncate text-xs text-muted">{item.detail}</span>
+                </span>
+                <StatusPill tone={item.pill}>{item.when}</StatusPill>
+              </li>
+            ))}
+          </ul>
+          <p className="mx-4 mt-auto mb-4 flex items-center gap-2 rounded-md bg-side-well px-3 py-2.5 text-sm text-ink-2 md:mx-5">
+            <Icon name="calendar" className="size-4 text-muted" />
+            6 requests still waiting for a decision
+          </p>
         </Card>
       </div>
 
-      <Card delay={200}>
-        <CardHeader title="Coming up" subtitle="The next ten days" />
-        <ul className="grid gap-2 px-4 pb-4 sm:grid-cols-2 md:px-5 lg:grid-cols-4">
-          {upcoming.map(([name, detail, when]) => (
-            <li key={name} className="rounded-md bg-side-well px-3 py-3">
-              <p className="text-sm font-semibold">{name}</p>
-              <p className="text-xs text-muted">{detail}</p>
-              <p className="mt-2 text-xs font-semibold text-accent-text">{when}</p>
-            </li>
-          ))}
-        </ul>
-      </Card>
-
       <BookTimeOff open={bookOpen} onClose={() => setBookOpen(false)} />
       <AddWatch open={watchOpen} onClose={() => setWatchOpen(false)} />
-      <SailingDialog sailing={sailing} onClose={() => setSailing(null)} />
     </>
-  );
-}
-
-function Legend({ swatch, label }: { swatch: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={`h-2 w-3 rounded-[3px] ${swatch}`} />
-      {label}
-    </span>
-  );
-}
-
-function Lane({
-  name,
-  run,
-  tone,
-  sailings,
-  onOpen,
-}: {
-  name: string;
-  run: string;
-  tone: 1 | 3;
-  sailings: Sailing[];
-  onOpen: (sailing: Sailing) => void;
-}) {
-  return (
-    <div className="mb-2.5 grid min-h-[76px] grid-cols-[168px_minmax(0,1fr)] items-center">
-      <div className="flex min-w-0 items-center gap-2.5 pr-3">
-        <span
-          className="grid size-9 shrink-0 place-items-center rounded-xl"
-          style={{
-            color: `color-mix(in oklab, var(--c${tone}) 80%, var(--ink))`,
-            background: `color-mix(in oklab, var(--c${tone}) 14%, var(--card))`,
-          }}
-        >
-          <Icon name="ship" className="size-5" />
-        </span>
-        <span className="min-w-0">
-          <b className="block truncate text-sm">{name}</b>
-          <small className="block truncate text-xs font-medium text-muted">{run}</small>
-        </span>
-      </div>
-      <div className="relative h-[76px] overflow-hidden rounded-[14px] bg-panel shadow-[inset_0_0_0_1px_var(--line)]">
-        {Array.from({ length: 15 }, (_, index) => (
-          <i
-            key={index}
-            className="absolute top-2.5 bottom-2.5 w-px bg-line"
-            style={{ left: `${((index + 1) / 16) * 100}%` }}
-          />
-        ))}
-        {sailings.map((sailing) => (
-          <button
-            key={`${sailing.ship}-${sailing.t}`}
-            type="button"
-            onClick={() => onOpen(sailing)}
-            aria-label={`${sailing.t} ${sailing.from} to ${sailing.to}, ${sailing.state}`}
-            className={cn(
-              "absolute top-3 bottom-3 flex w-max max-w-[92px] cursor-pointer flex-col justify-center overflow-hidden rounded-[11px] px-2 text-left",
-              sailing.state === "Sailed" && "bg-canvas text-ink-2",
-              sailing.state === "At sea" && "bg-accent text-accent-ink",
-              sailing.state === "Due" && "bg-card shadow-raise ring-1 ring-line-strong",
-              sailing.state === "Short" && "bg-card shadow-[inset_0_0_0_1.5px_var(--bad)]",
-            )}
-            style={{ left: `${place(sailing.t)}%` }}
-          >
-            {sailing.state === "Short" ? <i className="absolute inset-y-0 left-0 w-1 bg-bad" /> : null}
-            <b className="relative text-xs leading-tight font-bold">{sailing.t}</b>
-            <small className="relative truncate text-[10px] font-semibold text-current/80">{sailing.to}</small>
-            {sailing.state === "Sailed" ? <Icon name="check" className="absolute top-1 right-1 size-3 text-muted" /> : null}
-            {sailing.state === "Short" ? (
-              <span className="absolute top-1 right-1 grid h-4 min-w-5 place-items-center rounded-full bg-bad px-1 text-[10px] font-bold text-white">
-                −{sailing.need - sailing.have}
-              </span>
-            ) : null}
-          </button>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -544,33 +611,6 @@ function AddWatch({ open, onClose }: { open: boolean; onClose: () => void }) {
         <TextField label="Start" type="time" value={start} onChange={(event) => setStart(event.target.value)} />
         <TextField label="End" type="time" value={end} onChange={(event) => setEnd(event.target.value)} />
       </div>
-    </Modal>
-  );
-}
-
-function SailingDialog({ sailing, onClose }: { sailing: Sailing | null; onClose: () => void }) {
-  const short = sailing ? sailing.need - sailing.have : 0;
-  return (
-    <Modal
-      open={sailing !== null}
-      title={sailing ? `${sailing.t} ${sailing.from} → ${sailing.to}` : ""}
-      description={sailing ? `${sailing.ship} · ${sailing.mins} min crossing · ${sailing.state}` : undefined}
-      onClose={onClose}
-      footer={<Button onClick={onClose}>Close</Button>}
-    >
-      {sailing ? (
-        <div className="flex items-center gap-4 rounded-[14px] bg-side-well px-4 py-3">
-          <p className="text-2xl font-semibold tabular-nums tracking-tight">
-            {sailing.have}/{sailing.need}
-          </p>
-          <div>
-            <p className="text-sm font-semibold">
-              {short > 0 ? `${short} short of minimum crew` : "Crewed to minimum"}
-            </p>
-            <p className="text-xs text-muted">{sailing.have} aboard at departure · minimum set by the safe manning certificate</p>
-          </div>
-        </div>
-      ) : null}
     </Modal>
   );
 }
