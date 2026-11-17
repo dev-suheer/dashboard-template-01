@@ -478,11 +478,11 @@
   }
 }
 
-/* Unlayered so these beat the field's text-md utility. Urbanist draws password discs as tiny dots, so the mask uses a face with larger discs. */
+/* Unlayered so these beat the field's text-md utility. Urbanist draws password discs as specks, so the mask uses a face whose discs match the field text. */
 input.password-mask {
   font-family: Verdana, Geneva, sans-serif;
-  font-size: 22px;
-  letter-spacing: 0.14em;
+  font-size: 13px;
+  letter-spacing: 0.06em;
 }
 
 input.password-mask::placeholder {
